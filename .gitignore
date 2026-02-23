@@ -1,0 +1,16 @@
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+remaining datas/
+
+venv/
+env/
+.env
+
+models/*.pth
+models/*.pkl
+
+.DS_Store
+Thumbs.db
