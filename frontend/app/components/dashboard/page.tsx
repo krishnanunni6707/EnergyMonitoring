@@ -1,17 +1,16 @@
 'use client';
-import React, { use, useState } from 'react';
-import { 
-  Bell, Plug2, AlertCircle, PowerOff, Plus, Zap, Activity, 
-  Clock, LayoutGrid, BarChart3, Settings, Menu, X, Moon, 
-  ExternalLink, ChevronDown, TrendingUp 
+import React, { useState } from 'react';
+import {
+  Bell, Plug2, AlertCircle, PowerOff, Plus, Zap, Activity,
+  Clock, LayoutGrid, BarChart3, Settings, Menu, X, Moon,
+  ExternalLink, ChevronDown, TrendingUp, Sparkles
 } from 'lucide-react';
 
-// --- Components ---
+// --- Sub-Components ---
 
 const SidebarItem = ({ icon: Icon, label, active = false }: any) => (
-  <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium mb-1 ${
-    active ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50'
-  }`}>
+  <button className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium mb-1 ${active ? 'bg-blue-50 text-blue-600' : 'text-slate-400 hover:bg-slate-50'
+    }`}>
     <Icon size={20} />
     <span className="text-sm">{label}</span>
   </button>
@@ -37,9 +36,8 @@ const DeviceCard = ({ name, status, voltage, current, power, timer, type = 'onli
   const isOffline = type === 'offline';
 
   return (
-    <div className={`p-6 rounded-[2.5rem] bg-white border shadow-sm transition-all ${
-      isWarning ? 'border-red-100' : 'border-slate-50'
-    } ${isOffline ? 'opacity-60' : ''}`}>
+    <div className={`p-6 rounded-[2.5rem] bg-white border shadow-sm transition-all ${isWarning ? 'border-red-100' : 'border-slate-50'
+      } ${isOffline ? 'opacity-60' : ''}`}>
       <div className="flex justify-between items-start mb-6">
         <div className="flex items-center gap-4">
           <div className={`p-4 rounded-2xl ${isWarning ? 'bg-red-50 text-red-500' : isOffline ? 'bg-slate-100 text-slate-400' : 'bg-green-50 text-green-500'}`}>
@@ -62,16 +60,16 @@ const DeviceCard = ({ name, status, voltage, current, power, timer, type = 'onli
 
       {!isOffline && (
         <div className="grid grid-cols-2 gap-y-4 mb-6">
-          <div className="flex items-center gap-2 text-xs text-slate-500"><Zap size={14} className="text-slate-300"/> {voltage} V</div>
-          <div className="flex items-center gap-2 text-xs text-slate-500"><Activity size={14} className="text-slate-300"/> {current} A</div>
-          {power && <div className="flex items-center gap-2 text-xs font-bold text-slate-800"><Zap size={14} className="text-slate-300"/> {power} W</div>}
-          {timer && <div className="flex items-center gap-2 text-xs font-bold text-slate-800"><Clock size={14} className="text-slate-300"/> {timer}</div>}
+          <div className="flex items-center gap-2 text-xs text-slate-500"><Zap size={14} className="text-slate-300" /> {voltage} V</div>
+          <div className="flex items-center gap-2 text-xs text-slate-500"><Activity size={14} className="text-slate-300" /> {current} A</div>
+          {power && <div className="flex items-center gap-2 text-xs font-bold text-slate-800"><Zap size={14} className="text-slate-300" /> {power} W</div>}
+          {timer && <div className="flex items-center gap-2 text-xs font-bold text-slate-800"><Clock size={14} className="text-slate-300" /> {timer}</div>}
         </div>
       )}
 
       {isWarning && (
         <div className="bg-red-50/50 p-4 rounded-2xl border border-red-50">
-          <p className="text-[11px] text-red-500 font-medium leading-relaxed">Over-voltage protection triggered. Device disconnected for safety.</p>
+          <p className="text-[11px] text-red-500 font-medium leading-relaxed">Over-voltage protection triggered.</p>
         </div>
       )}
       {isOffline && <p className="text-sm font-medium text-slate-400 italic mt-8">Last seen 3 hours ago</p>}
@@ -79,23 +77,45 @@ const DeviceCard = ({ name, status, voltage, current, power, timer, type = 'onli
   );
 };
 
-// --- Main Layout ---
+// --- Main Dashboard ---
 
 export default function Dashboard() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
 
+  // LSTM Logic States
+  const [prediction, setPrediction] = useState<number | null>(null);
+  const [loadingPrediction, setLoadingPrediction] = useState(false);
+
+  const fetchLSTMForecasting = async () => {
+    setLoadingPrediction(true);
+    try {
+      // Mocking the last 4 power readings to send to the LSTM
+      const history = [2.1, 2.3, 2.2, 2.4];
+      const res = await fetch('/api/predict', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sequence: history }),
+      });
+      const data = await res.json();
+      setPrediction(data.prediction);
+    } catch (err) {
+      console.error("Inference failed", err);
+    } finally {
+      setLoadingPrediction(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex font-sans text-slate-900">
-      
+
       {/* Mobile Backdrop */}
       {isSidebarOpen && (
         <div className="fixed inset-0 bg-slate-900/20 backdrop-blur-sm z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
       {/* Sidebar */}
-      <aside className={`fixed lg:sticky top-0 left-0 h-screen w-64 bg-white border-r border-slate-100 p-6 z-50 transition-transform lg:translate-x-0 ${
-        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-      }`}>
+      <aside className={`fixed lg:sticky top-0 left-0 h-screen w-64 bg-white border-r border-slate-100 p-6 z-50 transition-transform lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}>
         <div className="flex items-center gap-3 mb-10 px-2">
           <div className="bg-blue-500 p-2 rounded-xl text-white"><Zap size={20} fill="currentColor" /></div>
           <span className="text-xl font-black tracking-tight">VoltFlow</span>
@@ -139,7 +159,7 @@ export default function Dashboard() {
         </header>
 
         <div className="p-6 lg:p-10 pt-0 grid grid-cols-1 xl:grid-cols-12 gap-8">
-          
+
           {/* Left Column (Stats + Devices) */}
           <div className="xl:col-span-8">
             <div className="flex flex-wrap gap-4 mb-10">
@@ -164,15 +184,47 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* Right Column (Controls) */}
+          {/* Right Column (Controls & AI) */}
           <div className="xl:col-span-4 space-y-8">
-            <h2 className="text-xl font-bold">Quick Controls</h2>
-            
+
+            {/* LSTM Prediction Card */}
+            <div className="bg-gradient-to-br from-indigo-600 to-blue-700 p-8 rounded-[2.5rem] text-white shadow-xl shadow-blue-100 overflow-hidden relative">
+              <Sparkles className="absolute -top-2 -right-2 text-white/10 w-24 h-24" />
+              <div className="relative z-10">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <h3 className="font-bold text-white/90">AI Energy Forecast</h3>
+                    <p className="text-[10px] text-white/60 uppercase font-black tracking-widest">LSTM Prediction Model</p>
+                  </div>
+                  <TrendingUp size={24} className="text-white/40" />
+                </div>
+
+                <div className="mb-8">
+                  <p className="text-xs text-white/70 mb-1">Expected usage for next hour:</p>
+                  <div className="text-4xl font-black">
+                    {loadingPrediction ? "..." : prediction ? `${prediction} kW` : "---"}
+                  </div>
+                </div>
+
+                <button
+                  onClick={fetchLSTMForecasting}
+                  disabled={loadingPrediction}
+                  className="w-full bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white text-xs font-bold py-4 rounded-2xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                >
+                  {loadingPrediction ? (
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    <>Run Inference</>
+                  )}
+                </button>
+              </div>
+            </div>
+
             {/* Timer Card */}
             <div className="bg-blue-50/40 p-8 rounded-[2.5rem] border border-blue-100">
               <h3 className="text-center font-bold text-slate-700 mb-8">Set Quick Timer</h3>
               <div className="flex justify-center items-center gap-3 mb-10">
-                {[ {v: 0, l:'HRS'}, {v: 3, l:'MIN'}, {v: 0, l:'SEC'} ].map((unit, i) => (
+                {[{ v: 0, l: 'HRS' }, { v: 3, l: 'MIN' }, { v: 0, l: 'SEC' }].map((unit, i) => (
                   <React.Fragment key={unit.l}>
                     <div className="bg-white flex flex-col items-center justify-center w-20 h-20 rounded-2xl shadow-sm border border-blue-100">
                       <div className="flex items-center gap-1 font-bold text-xl">

@@ -113,7 +113,7 @@ def predict_anomalies(test_path):
         outputs = model(inputs)
         _, predicted = torch.max(outputs, 1)
         probs = torch.softmax(outputs, dim=1)[:, 1] # Probability of being abnormal
-
+ 
     # Create Final Conclusion
     original_df['prediction_score'] = probs.numpy()
     original_df['status'] = ["Abnormal" if p > 0.5 else "Normal" for p in original_df['prediction_score']]

@@ -5,12 +5,11 @@ __pycache__/
 *.pyd
 remaining datas/
 
+
 venv/
 env/
 .env
 
-models/*.pth
-models/*.pkl
 
 .DS_Store
 Thumbs.db
