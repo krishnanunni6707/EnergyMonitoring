@@ -101,4 +101,4 @@ async def predict_energy_stream(file: UploadFile = File(...)):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 # --- 6. RUN SERVER ---
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=3001)
