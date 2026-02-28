@@ -52,49 +52,84 @@ else:
     print("❌ ERROR: Ensure 'models/' folder contains your .pth and .pkl files!")
 
 # --- 4. DATA SCHEMAS ---
-class PredictionRequest(BaseModel):
-    sequence: list  # Expects list of [voltage, current] pairs
+# Modified Schema
+class ApplianceData(BaseModel):
+    appliance_id: str
+    sequence: list  # The [voltage, current] pairs
+
+class BatchPredictionRequest(BaseModel):
+    appliances: list[ApplianceData]
 
 # --- 5. ENDPOINTS ---
+df_sensor = pd.read_csv("live_energy_data.csv")    
+sensor_index = 0
+
+@app.get("/sensor-data")
+async def get_sensor_data():
+    global sensor_index
+    # Get the data for the current index for all appliances
+    # We assume the CSV has data grouped by timestamp
+    
+    # Get unique appliances at this "time step"
+    # To keep it simple, we return 3 rows (one for each appliance)
+    current_batch = df_sensor.iloc[sensor_index : sensor_index + 3]
+    
+    # Move index forward for the next call (loop back if at end)
+    sensor_index = (sensor_index + 3) % len(df_sensor)
+    
+    results = []
+    for _, row in current_batch.iterrows():
+        results.append({
+            "appliance_id": row['appliance_id'],
+            "voltage": float(row['voltage']),
+            "current": float(row['current'])
+        })
+    
+    return {"data": results}
 
 @app.get("/")
 async def read_index():
     return {"status": "Online", "model_loaded": model is not None}
 
 @app.post("/predict")
-async def predict_json(data: PredictionRequest):
+async def predict_batch(data: BatchPredictionRequest):
     if model is None or scaler is None:
-        return {"error": "Model not loaded on server"}
+        return {"error": "Model not loaded"}
     
-    try:
-        # Convert input to numpy array
-        raw_data = np.array(data.sequence) # Shape: (Seq, 2)
-        
-        # Ensure we have the correct sequence length
-        if len(raw_data) < SEQ_LENGTH:
-            # Pad with zeros if too short
-            padding = np.zeros((SEQ_LENGTH - len(raw_data), 2))
-            raw_data = np.vstack([padding, raw_data])
-        else:
-            # Take only the last SEQ_LENGTH items
-            raw_data = raw_data[-SEQ_LENGTH:]
+    results = []
 
-        # Scale and convert to Tensor
-        scaled_data = scaler.transform(raw_data)
-        input_tensor = torch.tensor([scaled_data], dtype=torch.float32)
+    for item in data.appliances:
+        try:
+            # --- Existing Logic for one appliance ---
+            raw_data = np.array(item.sequence)
+            
+            # Padding/Truncating to SEQ_LENGTH
+            if len(raw_data) < SEQ_LENGTH:
+                padding = np.zeros((SEQ_LENGTH - len(raw_data), 2))
+                raw_data = np.vstack([padding, raw_data])
+            else:
+                raw_data = raw_data[-SEQ_LENGTH:]
 
-        with torch.no_grad():
-            output = model(input_tensor)
-            prob = torch.softmax(output, dim=1)[0, 1].item()
-            prediction = torch.argmax(output, dim=1).item()
+            # Scale and Predict
+            scaled_data = scaler.transform(raw_data)
+            input_tensor = torch.tensor([scaled_data], dtype=torch.float32)
 
-        return {
-            "prediction": round(prob * 10, 2), # Returning as a "Usage Score" for the UI
-            "status": "Abnormal" if prediction == 1 else "Normal",
-            "probability": prob
-        }
-    except Exception as e:
-        return {"error": str(e)}
+            with torch.no_grad():
+                output = model(input_tensor)
+                prob = torch.softmax(output, dim=1)[0, 1].item()
+                prediction = torch.argmax(output, dim=1).item()
+
+            # Append result with the ID
+            results.append({
+                "appliance_id": item.appliance_id,
+                "usage_score": round(prob * 10, 2),
+                "status": "Abnormal" if prediction == 1 else "Normal",
+                "probability": prob
+            })
+        except Exception as e:
+            results.append({"appliance_id": item.appliance_id, "error": str(e)})
+
+    return {"results": results}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
