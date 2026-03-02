@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
+import mqtt from 'mqtt';
 import {
   Bell, Plug2, AlertCircle, PowerOff, Plus, Zap, Activity,
   Clock, LayoutGrid, BarChart3, Settings, Menu, Moon,
@@ -27,21 +28,18 @@ const DeviceCard = ({ name, status, voltage, current, power, type = 'online', sc
   const isWarning = type === 'warning';
 
   return (
-    <div className={`p-6 rounded-[2.5rem] bg-white border shadow-sm transition-all duration-500 ${
-      isWarning ? 'border-red-200 bg-red-50/30' : 'border-slate-50'
-    }`}>
+    <div className={`p-6 rounded-[2.5rem] bg-white border shadow-sm transition-all duration-500 ${isWarning ? 'border-red-200 bg-red-50/30' : 'border-slate-50'
+      }`}>
       <div className="flex justify-between items-start mb-6">
         <div className="flex items-center gap-4">
-          <div className={`p-4 rounded-2xl ${
-            isWarning ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'
-          }`}>
+          <div className={`p-4 rounded-2xl ${isWarning ? 'bg-red-50 text-red-500' : 'bg-green-50 text-green-500'
+            }`}>
             {isWarning ? <AlertCircle size={24} /> : <Plug2 size={24} />}
           </div>
           <div>
             <h4 className="font-bold text-slate-800">{name}</h4>
-            <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase ${
-              isWarning ? 'text-red-500' : 'text-green-500'
-            }`}>
+            <div className={`flex items-center gap-1.5 text-[10px] font-bold uppercase ${isWarning ? 'text-red-500' : 'text-green-500'
+              }`}>
               <span className={`w-1.5 h-1.5 rounded-full ${isWarning ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`} />
               {status}
             </div>
@@ -68,7 +66,7 @@ const DeviceCard = ({ name, status, voltage, current, power, type = 'online', sc
           <div className="text-lg font-black text-blue-600">{power} W</div>
         </div>
       </div>
-      
+
       {isWarning ? (
         <p className="text-[11px] text-red-600 font-bold bg-red-100/50 p-2 rounded-lg">
           ⚠️ LSTM: Abnormal Pattern Detected
@@ -87,6 +85,7 @@ const DeviceCard = ({ name, status, voltage, current, power, type = 'online', sc
 export default function Dashboard() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isAIAnalyzing, setIsAIAnalyzing] = useState(false);
+  const [mqttConnected, setMqttConnected] = useState(false);
 
   // 1. STATE: history stores [voltage, current] pairs for the LSTM
   const [appliances, setAppliances] = useState<Array<{
@@ -99,13 +98,89 @@ export default function Dashboard() {
     score: number;
   }>>([]);
 
-  // 2. LIVE CSV DATA POLLING
+  // 2. MQTT WebSocket Connection
+  useEffect(() => {
+    const client = mqtt.connect("wss://broker.hivemq.com:8884/mqtt");
+
+    client.on('connect', () => {
+      console.log('✅ MQTT WebSocket Connected');
+      setMqttConnected(true);
+      // Subscribe to all smart plug topics
+      client.subscribe('smart/plug/+/codedata', (err: Error | null) => {
+        if (err) {
+          console.error('MQTT Subscribe Error:', err);
+        } else {
+          console.log('📡 Subscribed to smart/plug/+/codedata');
+        }
+      });
+    });
+
+    client.on('message', (topic: string, message: Buffer) => {
+      try {
+        const data = JSON.parse(message.toString());
+        const plugId = topic.split('/')[2]; // Extract plug ID from topic
+
+        console.log('📥 MQTT Message:', plugId, data);
+
+        const voltage = Number(data?.voltage ?? 0);
+        const current = Number(data?.current ?? 0);
+
+        setAppliances(prev => {
+          const existing = prev.find(app => app.id === plugId);
+          const newPair: number[] = [voltage, current];
+          const updatedHistory = [...(existing?.history ?? []), newPair].slice(-10);
+
+          if (existing) {
+            return prev.map(app =>
+              app.id === plugId
+                ? {
+                  ...app,
+                  voltage: voltage.toFixed(1),
+                  current: current.toFixed(2),
+                  history: updatedHistory
+                }
+                : app
+            );
+          } else {
+            return [...prev, {
+              id: plugId,
+              name: plugId,
+              voltage: voltage.toFixed(1),
+              current: current.toFixed(2),
+              history: updatedHistory,
+              prediction: 'Normal',
+              score: 0
+            }];
+          }
+        });
+      } catch (err) {
+        console.error('MQTT Message Parse Error:', err);
+      }
+    });
+
+    client.on('error', (err: Error) => {
+      console.error('MQTT Error:', err);
+      setMqttConnected(false);
+    });
+
+    client.on('close', () => {
+      console.log('❌ MQTT Disconnected');
+      setMqttConnected(false);
+    });
+
+    return () => {
+      client.end();
+    };
+  }, []);
+
+  // 3. FALLBACK: HTTP Polling (commented out - using MQTT WebSocket as primary)
+  /*
   useEffect(() => {
     const fetchSensorData = async () => {
       try {
         const res = await fetch('/api/sensor'); // Calls the Python /sensor-data endpoint
         const json = await res.json();
-        
+
         if (Array.isArray(json.data)) {
           setAppliances(prev => {
             const previousById = new Map(prev.map(app => [app.id, app]));
@@ -148,8 +223,9 @@ export default function Dashboard() {
     const timer = setInterval(fetchSensorData, 2000);
     return () => clearInterval(timer);
   }, []);
+  */
 
-  // 3. AI PREDICTION TRIGGER
+  // 4. AI PREDICTION TRIGGER
   const runAIAudit = async () => {
     if (appliances.length === 0 || appliances.some(app => app.history.length < 5)) {
       alert("Gathering more sensor history... please wait.");
@@ -207,9 +283,15 @@ export default function Dashboard() {
             <button className="lg:hidden" onClick={() => setSidebarOpen(true)}><Menu /></button>
             <h1 className="font-black text-slate-800 uppercase tracking-widest text-sm">System Live Feed</h1>
           </div>
-          <div className="flex items-center gap-2 bg-green-50 text-green-600 px-3 py-1.5 rounded-full border border-green-100">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-            <span className="text-[10px] font-black uppercase">CSV Stream Active</span>
+          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${mqttConnected
+            ? 'bg-green-50 text-green-600 border-green-100'
+            : 'bg-red-50 text-red-600 border-red-100'
+            }`}>
+            <div className={`w-2 h-2 rounded-full ${mqttConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+              }`} />
+            <span className="text-[10px] font-black uppercase">
+              {mqttConnected ? 'MQTT Connected' : 'MQTT Disconnected'}
+            </span>
           </div>
         </header>
 
@@ -225,7 +307,7 @@ export default function Dashboard() {
               <h2 className="text-sm font-black text-slate-400 uppercase tracking-[0.2em]">Monitoring Nodes</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {appliances.map(app => (
-                  <DeviceCard 
+                  <DeviceCard
                     key={app.id}
                     name={app.name}
                     voltage={app.voltage}
@@ -245,9 +327,9 @@ export default function Dashboard() {
                 <Sparkles className="absolute -right-6 -top-6 text-blue-500/20 w-32 h-32" />
                 <h3 className="text-xl font-bold mb-4">LSTM AI Analysis</h3>
                 <p className="text-xs text-slate-400 leading-relaxed mb-8">
-                  Click below to scan the last 10 snapshots of your CSV data for anomalies.
+                  Click below to scan the last 10 real-time data snapshots from MQTT sensors for anomalies.
                 </p>
-                <button 
+                <button
                   onClick={runAIAudit}
                   disabled={isAIAnalyzing}
                   className="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl font-black transition-all active:scale-95 flex items-center justify-center gap-3 disabled:bg-slate-800"
